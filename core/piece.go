@@ -37,7 +37,7 @@ const (
 	Qw
 	Kw
 	Pw
-	Nb = iota + 2
+	Nb
 	Bb
 	Rb
 	Qb

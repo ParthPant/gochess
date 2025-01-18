@@ -18,6 +18,9 @@ type MagicEntry struct {
 	indexBits uint8
 }
 
+type relevantOccupancyFunc func(int) BitBoard
+type attackFunc func(int, BitBoard) BitBoard
+
 var RookMagics [64]MagicEntry
 var BishopMagics [64]MagicEntry
 
@@ -37,12 +40,12 @@ func init() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		computeMagics(Rw)
+		computeMagics(rookRelevantOccupancy, rookAttack, &RookMagics, &RookMoves)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		computeMagics(Bw)
+		computeMagics(bishopRelevantOccupancy, bishopAttack, &BishopMagics, &BishopMoves)
 	}()
 	wg.Wait()
 	slog.Info("Magic Tables have been constructed.")
@@ -332,6 +335,7 @@ func subsets(set BitBoard) chan BitBoard {
 	var subset BitBoard
 	ch := make(chan BitBoard)
 	go func() {
+		defer close(ch)
 		for {
 			ch <- subset
 			subset = (subset - set) & set
@@ -339,57 +343,31 @@ func subsets(set BitBoard) chan BitBoard {
 				break
 			}
 		}
-		close(ch)
 	}()
 	return ch
 }
 
-func computeMagics(p piece) {
+func computeMagics(relevantOccupancyFn relevantOccupancyFunc, attackFn attackFunc, magicTable *[64]MagicEntry, movesTable *[64][]BitBoard) {
 	for i := 0; i < 64; i++ {
-		var set BitBoard
-		switch p {
-		case Rw, Rb:
-			set = rookRelevantOccupancy(i)
-		case Bw, Bb:
-			set = bishopRelevantOccupancy(i)
-		default:
-			panic("Only slider pieces allowed. Rook/Bishops")
-		}
+		set := relevantOccupancyFn(i)
 		indexBits := uint8(bits.OnesCount64(uint64(set)))
-		// slog.Info(fmt.Sprintf("%b, %d", set, indexBits))
 		for {
 			magic := rand.Uint64() & rand.Uint64() & rand.Uint64()
 			magicEntry := MagicEntry{mask: set, magic: magic, indexBits: indexBits}
-			table, err := tryMakeTable(p, magicEntry, square(i))
+			table, err := tryMakeTable(attackFn, magicEntry, square(i))
 			if err == nil {
-				switch p {
-				case Rw, Rb:
-					RookMagics[i] = magicEntry
-					RookMoves[i] = table
-				case Bw, Bb:
-					BishopMagics[i] = magicEntry
-					BishopMoves[i] = table
-				default:
-					panic("Only slider pieces allowed. Rook/Bishops")
-				}
+				(*magicTable)[i] = magicEntry
+				(*movesTable)[i] = table
 				break
 			}
 		}
 	}
 }
 
-func tryMakeTable(p piece, m MagicEntry, sq square) ([]BitBoard, error) {
+func tryMakeTable(attackFn attackFunc, m MagicEntry, sq square) ([]BitBoard, error) {
 	table := make([]BitBoard, 1<<m.indexBits)
 	for blockers := range subsets(m.mask) {
-		var moves BitBoard
-		switch p {
-		case Rw, Rb:
-			moves = rookAttack(int(sq), blockers)
-		case Bw, Bb:
-			moves = bishopAttack(int(sq), blockers)
-		default:
-			panic("Only slider pieces allowed. Rook/Bishops")
-		}
+		moves := attackFn(int(sq), blockers)
 
 		tableEntry := &table[m.magic_index(blockers)]
 		if *tableEntry == 0 {

@@ -14,15 +14,6 @@ type Move struct {
 	to    square
 }
 
-type promotedPiece uint8
-
-const (
-	Knight promotedPiece = iota
-	Bishop
-	Rook
-	Queen
-)
-
 func NewQuietMove(from square, to square) Move {
 	return Move{
 		flags: 0,
