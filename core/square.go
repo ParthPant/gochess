@@ -6,15 +6,13 @@ import (
 	u "unicode"
 )
 
-type square uint8
+type Square uint8
 
-type Square interface {
-	ToUint() uint8
-	ToXY() (uint8, uint8)
-	ToStr() string
+func SquareFromXY(x int, y int) Square {
+	return Square(y*8 + x)
 }
 
-func StrToSq(s string) (square, error) {
+func StrToSq(s string) (Square, error) {
 	if len(s) > 2 {
 		return 0, errors.New("Invalid square. 1")
 	}
@@ -33,14 +31,14 @@ func StrToSq(s string) (square, error) {
 		return 0, errors.New("Invalid square.")
 	}
 
-	sq := square(y*8 + x)
+	sq := Square(y*8 + x)
 	if sq >= 64 {
 		return 0, errors.New("Invalid square.")
 	}
 	return sq, nil
 }
 
-func (sq square) ToStr() string {
+func (sq Square) ToStr() string {
 	x, y := sq.ToXY()
 	rank := y + 1
 	file := rune(int('a') + int(x))
@@ -48,18 +46,18 @@ func (sq square) ToStr() string {
 	return fmt.Sprintf("%c%d", file, rank)
 }
 
-func (sq square) ToUint() uint8 {
+func (sq Square) ToUint() uint8 {
 	return uint8(sq)
 }
 
-func (sq square) ToXY() (uint8, uint8) {
+func (sq Square) ToXY() (uint8, uint8) {
 	x := sq % 8
 	y := sq / 8
 	return uint8(x), uint8(y)
 }
 
 const (
-	A1 square = iota
+	A1 Square = iota
 	B1
 	C1
 	D1

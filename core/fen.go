@@ -12,7 +12,6 @@ import (
 func BoardFromFen(fen string) (Board, error) {
 	var board Board
 	board.castlingFlags = 0
-	board.epPossible = false
 	board.activeColor = White
 	board.halfMoveClock = 0
 	board.fullMoveClock = 0
@@ -22,7 +21,7 @@ func BoardFromFen(fen string) (Board, error) {
 	for i, row := range s.Split(piecesPart, "/") {
 		j := 0
 		for _, c := range row {
-			sq := square((7-i)*8 + j)
+			sq := Square((7-i)*8 + j)
 			if u.IsDigit(c) {
 				j += int(c - '0')
 			} else {
@@ -54,13 +53,13 @@ func BoardFromFen(fen string) (Board, error) {
 			for _, c := range castlingRights {
 				switch c {
 				case 'K':
-					board.SetWhiteOO()
+					board.setWhiteOO()
 				case 'Q':
-					board.SetWhiteOOO()
+					board.setWhiteOOO()
 				case 'k':
-					board.SetBlackOO()
+					board.setBlackOO()
 				case 'q':
-					board.SetBlackOOO()
+					board.setBlackOOO()
 				}
 			}
 		}
@@ -74,8 +73,7 @@ func BoardFromFen(fen string) (Board, error) {
 				slog.Error(fmt.Sprintf("%s", err))
 				return board, errors.New(fmt.Sprintf("Invalid en-passant target: %s", epTarget))
 			}
-			board.epTarget = sq
-			board.epPossible = true
+			board.epTarget = &sq
 		}
 	}
 

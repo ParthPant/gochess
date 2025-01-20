@@ -4,9 +4,10 @@ import (
 	"errors"
 	"log/slog"
 	"math/bits"
-	"math/rand"
 	"sync"
 )
+
+var magicSeeds = [8]uint64{728, 10316, 55013, 32803, 12281, 15100, 16645, 255}
 
 var PawnAtkTable [2][64]BitBoard
 var KnightAtkTable [64]BitBoard
@@ -28,6 +29,7 @@ var BishopMoves [64][]BitBoard
 var RookMoves [64][]BitBoard
 
 func init() {
+	slog.Info("Constructing look-up tables.")
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -35,29 +37,31 @@ func init() {
 		computePawnAtkTable()
 		computeKnightAtkTable()
 		computeKingAtkTable()
+		slog.Info("Jump Piece attack tables have been constructed.")
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		computeMagics(rookRelevantOccupancy, rookAttack, &RookMagics, &RookMoves)
+		slog.Info("Rook Magic Tables have been constructed.")
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		computeMagics(bishopRelevantOccupancy, bishopAttack, &BishopMagics, &BishopMoves)
+		slog.Info("Bishop Magic Tables have been constructed.")
 	}()
 	wg.Wait()
-	slog.Info("Magic Tables have been constructed.")
 }
 
-func GetBishopMoves(sq square, blockers BitBoard) BitBoard {
+func GetBishopMoves(sq Square, blockers BitBoard) BitBoard {
 	magic := BishopMagics[sq]
 	moves := BishopMoves[sq]
 	return moves[magic.magic_index(blockers)]
 }
 
-func GetRookMoves(sq square, blockers BitBoard) BitBoard {
+func GetRookMoves(sq Square, blockers BitBoard) BitBoard {
 	magic := RookMagics[sq]
 	moves := RookMoves[sq]
 	return moves[magic.magic_index(blockers)]
@@ -126,7 +130,7 @@ func bishopRelevantOccupancy(sq int) BitBoard {
 
 	// file and rank
 	f, r := sq%8+1, sq/8+1
-	for {
+	for f <= 6 && r <= 6 {
 		if f > 6 || r > 6 {
 			break
 		}
@@ -136,30 +140,21 @@ func bishopRelevantOccupancy(sq int) BitBoard {
 	}
 
 	f, r = sq%8-1, sq/8+1
-	for {
-		if f < 1 || r > 6 {
-			break
-		}
+	for f >= 1 && r <= 6 {
 		occ |= 1 << (r*8 + f)
 		f--
 		r++
 	}
 
 	f, r = sq%8-1, sq/8-1
-	for {
-		if f < 1 || r < 1 {
-			break
-		}
+	for f >= 1 && r >= 1 {
 		occ |= 1 << (r*8 + f)
 		f--
 		r--
 	}
 
 	f, r = sq%8+1, sq/8-1
-	for {
-		if f > 6 || r < 1 {
-			break
-		}
+	for f <= 6 && r >= 1 {
 		occ |= 1 << (r*8 + f)
 		f++
 		r--
@@ -172,12 +167,9 @@ func bishopAttack(sq int, blockers BitBoard) BitBoard {
 
 	// file and rank
 	f, r := sq%8+1, sq/8+1
-	for {
-		if f > 6 || r > 6 {
-			break
-		}
+	for f <= 7 && r <= 7 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		f++
@@ -185,12 +177,9 @@ func bishopAttack(sq int, blockers BitBoard) BitBoard {
 	}
 
 	f, r = sq%8-1, sq/8+1
-	for {
-		if f < 1 || r > 6 {
-			break
-		}
+	for f >= 0 && r <= 7 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		f--
@@ -198,12 +187,9 @@ func bishopAttack(sq int, blockers BitBoard) BitBoard {
 	}
 
 	f, r = sq%8-1, sq/8-1
-	for {
-		if f < 1 || r < 1 {
-			break
-		}
+	for f >= 0 && r >= 0 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		f--
@@ -211,12 +197,9 @@ func bishopAttack(sq int, blockers BitBoard) BitBoard {
 	}
 
 	f, r = sq%8+1, sq/8-1
-	for {
-		if f > 6 || r < 1 {
-			break
-		}
+	for f <= 7 && r >= 0 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		f++
@@ -231,37 +214,25 @@ func rookRelevantOccupancy(sq int) BitBoard {
 
 	// file and rank
 	f, r := sq%8+1, sq/8
-	for {
-		if f > 6 {
-			break
-		}
+	for f <= 6 {
 		occ |= 1 << (r*8 + f)
 		f++
 	}
 
 	f, r = sq%8, sq/8+1
-	for {
-		if r > 6 {
-			break
-		}
+	for r <= 6 {
 		occ |= 1 << (r*8 + f)
 		r++
 	}
 
 	f, r = sq%8-1, sq/8
-	for {
-		if f < 1 {
-			break
-		}
+	for f >= 1 {
 		occ |= 1 << (r*8 + f)
 		f--
 	}
 
 	f, r = sq%8, sq/8-1
-	for {
-		if r < 1 {
-			break
-		}
+	for r >= 1 {
 		occ |= 1 << (r*8 + f)
 		r--
 	}
@@ -274,48 +245,36 @@ func rookAttack(sq int, blockers BitBoard) BitBoard {
 
 	// file and rank
 	f, r := sq%8+1, sq/8
-	for {
-		if f > 6 {
-			break
-		}
+	for f <= 7 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		f++
 	}
 
 	f, r = sq%8, sq/8+1
-	for {
-		if r > 6 {
-			break
-		}
+	for r <= 7 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		r++
 	}
 
 	f, r = sq%8-1, sq/8
-	for {
-		if f < 1 {
-			break
-		}
+	for f >= 1 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		f--
 	}
 
 	f, r = sq%8, sq/8-1
-	for {
-		if r < 1 {
-			break
-		}
+	for r >= 1 {
 		atk |= 1 << (r*8 + f)
-		if blockers.IsSet(square(r*8 + f)) {
+		if blockers.IsSet(Square(r*8 + f)) {
 			break
 		}
 		r--
@@ -331,30 +290,16 @@ func (e *MagicEntry) magic_index(blockers BitBoard) uint64 {
 	return index
 }
 
-func subsets(set BitBoard) chan BitBoard {
-	var subset BitBoard
-	ch := make(chan BitBoard)
-	go func() {
-		defer close(ch)
-		for {
-			ch <- subset
-			subset = (subset - set) & set
-			if subset == 0 {
-				break
-			}
-		}
-	}()
-	return ch
-}
-
 func computeMagics(relevantOccupancyFn relevantOccupancyFunc, attackFn attackFunc, magicTable *[64]MagicEntry, movesTable *[64][]BitBoard) {
+	var prng PRNG
 	for i := 0; i < 64; i++ {
+		prng.Seed(magicSeeds[i%8])
 		set := relevantOccupancyFn(i)
 		indexBits := uint8(bits.OnesCount64(uint64(set)))
 		for {
-			magic := rand.Uint64() & rand.Uint64() & rand.Uint64()
+			magic := prng.SparseRand64()
 			magicEntry := MagicEntry{mask: set, magic: magic, indexBits: indexBits}
-			table, err := tryMakeTable(attackFn, magicEntry, square(i))
+			table, err := tryMakeTable(attackFn, magicEntry, Square(i))
 			if err == nil {
 				(*magicTable)[i] = magicEntry
 				(*movesTable)[i] = table
@@ -364,9 +309,11 @@ func computeMagics(relevantOccupancyFn relevantOccupancyFunc, attackFn attackFun
 	}
 }
 
-func tryMakeTable(attackFn attackFunc, m MagicEntry, sq square) ([]BitBoard, error) {
+func tryMakeTable(attackFn attackFunc, m MagicEntry, sq Square) ([]BitBoard, error) {
 	table := make([]BitBoard, 1<<m.indexBits)
-	for blockers := range subsets(m.mask) {
+	var blockers BitBoard
+	for {
+		blockers = nextSubset(m.mask, blockers)
 		moves := attackFn(int(sq), blockers)
 
 		tableEntry := &table[m.magic_index(blockers)]
@@ -375,6 +322,14 @@ func tryMakeTable(attackFn attackFunc, m MagicEntry, sq square) ([]BitBoard, err
 		} else if *tableEntry != moves {
 			return []BitBoard{}, errors.New("Magic entry collision.")
 		}
+
+		if blockers == 0 {
+			break
+		}
 	}
 	return table, nil
+}
+
+func nextSubset(set BitBoard, subset BitBoard) BitBoard {
+	return (subset - set) & set
 }

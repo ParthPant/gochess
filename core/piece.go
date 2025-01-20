@@ -2,15 +2,15 @@ package core
 
 import "errors"
 
-type piece uint8
-type color uint8
+type Piece uint8
+type Color uint8
 
 const (
-	White color = 0
-	Black color = 1
+	White Color = 0
+	Black Color = 1
 )
 
-func (c color) ToStr() string {
+func (c Color) ToStr() string {
 	switch c {
 	case 0:
 		return "Black"
@@ -45,20 +45,20 @@ const (
 	Pb
 )
 
-var BlackPieces = [...]piece{Pb, Nb, Bb, Rb, Qb, Kb}
-var WhitePieces = [...]piece{Pw, Nw, Bw, Rw, Qw, Kw}
-var BoardPieces = [...]piece{Pb, Nb, Bb, Rb, Qb, Kb, Pw, Nw, Bw, Rw, Qw, Kw}
+var BlackPieces = [...]Piece{Pb, Nb, Bb, Rb, Qb, Kb}
+var WhitePieces = [...]Piece{Pw, Nw, Bw, Rw, Qw, Kw}
+var BoardPieces = [...]Piece{Pb, Nb, Bb, Rb, Qb, Kb, Pw, Nw, Bw, Rw, Qw, Kw}
 
-func (p piece) GetColor() color {
-	if p&(0b1000) > 0 {
-		return Black
-	} else {
+func (p Piece) GetColor() Color {
+	if p < 6 {
 		return White
+	} else {
+		return Black
 	}
 }
 
-func (p piece) Char() rune {
-	r, ok := map[piece]rune{Pb: 'p', Nb: 'n', Bb: 'b', Rb: 'r', Qb: 'q', Kb: 'k',
+func (p Piece) Char() rune {
+	r, ok := map[Piece]rune{Pb: 'p', Nb: 'n', Bb: 'b', Rb: 'r', Qb: 'q', Kb: 'k',
 		Pw: 'P', Nw: 'N', Bw: 'B', Rw: 'R', Qw: 'Q', Kw: 'K'}[p]
 	if !ok {
 		panic("Unrecognized Piece.")
@@ -66,8 +66,8 @@ func (p piece) Char() rune {
 	return r
 }
 
-func (p piece) UtfRune() rune {
-	r, ok := map[piece]rune{Pb: '♟', Nb: '♞', Bb: '♝', Rb: '♜', Qb: '♛', Kb: '♚',
+func (p Piece) UtfRune() rune {
+	r, ok := map[Piece]rune{Pb: '♟', Nb: '♞', Bb: '♝', Rb: '♜', Qb: '♛', Kb: '♚',
 		Pw: '♙', Nw: '♘', Bw: '♗', Rw: '♖', Qw: '♕', Kw: '♔'}[p]
 	if !ok {
 		panic("Unrecognized Piece.")
@@ -75,7 +75,7 @@ func (p piece) UtfRune() rune {
 	return r
 }
 
-func CharToPiece(c rune) (piece, error) {
+func CharToPiece(c rune) (Piece, error) {
 	switch c {
 	case 'p':
 		return Pb, nil

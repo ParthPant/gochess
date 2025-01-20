@@ -10,11 +10,11 @@ const promotionMask uint8 = 0b1000
 
 type Move struct {
 	flags uint8
-	from  square
-	to    square
+	from  Square
+	to    Square
 }
 
-func NewQuietMove(from square, to square) Move {
+func NewQuietMove(from Square, to Square) Move {
 	return Move{
 		flags: 0,
 		from:  from,
@@ -22,7 +22,7 @@ func NewQuietMove(from square, to square) Move {
 	}
 }
 
-func NewCaptureMove(from square, to square) Move {
+func NewCaptureMove(from Square, to Square) Move {
 	return Move{
 		flags: captureMask,
 		from:  from,
@@ -30,7 +30,7 @@ func NewCaptureMove(from square, to square) Move {
 	}
 }
 
-func NewEpMove(from square, to square) Move {
+func NewEpMove(from Square, to Square) Move {
 	return Move{
 		flags: epCapture,
 		from:  from,
@@ -38,7 +38,7 @@ func NewEpMove(from square, to square) Move {
 	}
 }
 
-func NewKingCastle(from square, to square) Move {
+func NewKingCastle(from Square, to Square) Move {
 	return Move{
 		flags: kingCastle,
 		from:  from,
@@ -46,7 +46,7 @@ func NewKingCastle(from square, to square) Move {
 	}
 }
 
-func NewQueenCastle(from square, to square) Move {
+func NewQueenCastle(from Square, to Square) Move {
 	return Move{
 		flags: queenCastle,
 		from:  from,
@@ -54,7 +54,7 @@ func NewQueenCastle(from square, to square) Move {
 	}
 }
 
-func NewPromotionMove(from square, to square, prom promotedPiece) Move {
+func NewPromotionMove(from Square, to Square, prom promotedPiece) Move {
 	flags := promotionMask | uint8(prom)
 	return Move{
 		flags,
@@ -63,7 +63,7 @@ func NewPromotionMove(from square, to square, prom promotedPiece) Move {
 	}
 }
 
-func NewPromotionCapture(from square, to square, prom promotedPiece) Move {
+func NewPromotionCapture(from Square, to Square, prom promotedPiece) Move {
 	flags := captureMask | promotionMask | uint8(prom)
 	return Move{
 		flags,
