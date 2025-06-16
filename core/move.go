@@ -1,5 +1,7 @@
 package core
 
+import "fmt"
+
 const quietMove uint8 = 0b0000
 const doublePawnPush uint8 = 0b0001
 const kingCastle uint8 = 0b0010
@@ -54,6 +56,14 @@ func NewQueenCastle(from Square, to Square) Move {
 	}
 }
 
+func NewDoubelPawnPush(from Square, to Square) Move {
+	return Move{
+		flags: doublePawnPush,
+		from:  from,
+		to:    to,
+	}
+}
+
 func NewPromotionMove(from Square, to Square, prom promotedPiece) Move {
 	flags := promotionMask | uint8(prom)
 	return Move{
@@ -96,6 +106,18 @@ func (m Move) IsQuiet() bool {
 	return m.flags == quietMove
 }
 
+func (m Move) IsDoublePawnPush() bool {
+	return m.flags == doublePawnPush
+}
+
 func (m Move) GetPromPiece() promotedPiece {
-	return promotedPiece(m.flags & 0b1100)
+	return promotedPiece(m.flags & 0b0011)
+}
+
+func (m *Move) SetPromPiece(p promotedPiece) {
+	m.flags |= uint8(p)
+}
+
+func (m *Move) ToStr() string {
+	return fmt.Sprintf("%s%s", m.from.ToStr(), m.to.ToStr())
 }

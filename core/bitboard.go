@@ -15,8 +15,12 @@ const (
 	HFile        BitBoard = AFile << 7
 	FirstRank    BitBoard = 0x00000000000000FF
 	SecondRank   BitBoard = FirstRank << 8
-	SeventhRank  BitBoard = FirstRank << (6 * 8)
-	EightRank    BitBoard = 0xFF00000000000000
+	ThirdRank    BitBoard = SecondRank << 8
+	FourthRank   BitBoard = ThirdRank << 8
+	FifthRank    BitBoard = FourthRank << 8
+	SixthRank    BitBoard = FifthRank << 8
+	SeventhRank  BitBoard = SixthRank << 8
+	EighthRank   BitBoard = SeventhRank << 8
 	WhiteSquares BitBoard = 0x55AA55AA55AA55AA
 	BlackSquares BitBoard = 0xAA55AA55AA55AA55
 )

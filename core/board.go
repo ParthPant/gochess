@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 )
 
 type Board struct {
@@ -42,6 +43,16 @@ func (b *Board) Print() {
 	fmt.Println(buf.String())
 }
 
+func (b *Board) MakeCopy() Board {
+	boardCopy := new(Board)
+	*boardCopy = *b
+
+	boardCopy.epTarget = new(Square)
+	boardCopy.epTarget = b.epTarget
+
+	return *boardCopy
+}
+
 func (b *Board) GetAtSq(sq Square) (Piece, bool) {
 	for _, piece := range BoardPieces {
 		if b.bitBoards[piece].IsSet(sq) {
@@ -50,6 +61,227 @@ func (b *Board) GetAtSq(sq Square) (Piece, bool) {
 	}
 	return 0, false
 
+}
+
+// inferMove Creates a Move object with all the relevant flags
+// using only the source and destination square
+// IMPORTANT: For promotions, the promoted piece will always be set to Knight by default.
+// Use SetPromPiece() to set the correct promoted piece.
+// TODO: inferMove should do all sanity checks on a move
+func (b *Board) inferMove(from Square, to Square) (Move, bool) {
+	piece, occupied := b.GetAtSq(from)
+	if !occupied {
+		return Move{}, false
+	}
+
+	flags := uint8(0)
+	_, occupied = b.GetAtSq(to)
+	// set capture flags
+	if occupied {
+		flags |= captureMask
+	}
+	if piece == Pw || piece == Pb {
+		if b.epTarget != nil && to == *b.epTarget {
+			flags |= epCapture
+		}
+	}
+
+	// set double pawn push flags
+	if piece == Pw {
+		if (1<<from)&SecondRank > 0 && (1<<to)&FourthRank > 0 {
+			flags |= doublePawnPush
+		}
+	} else if piece == Pb {
+		if (1<<from)&SeventhRank > 0 && (1<<to)&FifthRank > 0 {
+			flags |= doublePawnPush
+		}
+	}
+
+	// set castle flags
+	if piece == Kw {
+		if from == E1 && to == G1 {
+			flags |= kingCastle
+		}
+		if from == E1 && to == C1 {
+			flags |= queenCastle
+		}
+	} else if piece == Kb {
+		if from == E8 && to == G8 {
+			flags |= kingCastle
+		}
+		if from == E8 && to == C8 {
+			flags |= queenCastle
+		}
+	}
+
+	// set promotion mask
+	if piece == Pw {
+		if (1<<to)&EighthRank > 0 {
+			flags |= promotionMask
+		}
+	} else if piece == Pb {
+		if (1<<to)&FirstRank > 0 {
+			flags |= promotionMask
+		}
+	}
+
+	return Move{
+		flags,
+		from,
+		to,
+	}, true
+}
+
+// makeMove can potentially mutate Board to an invalid state.
+// State is guaranteed to be valid if the return value is True
+// TODO: makeMove should not do any sanity checks on a move. Sanity checks should be done by inferMove
+func (b *Board) makeMove(m Move) bool {
+	// get the piece which the player has moved
+	piece, occupied := b.GetAtSq(m.from)
+	if !occupied {
+		slog.Error("No piece to be moved.")
+		return false
+	}
+
+	if piece.GetColor() != b.activeColor {
+		slog.Error("Piece is not of the active color ", "color", b.activeColor.ToStr())
+		return false
+	}
+	slog.Debug("Moving Piece", "piece", string(piece.Char()))
+
+	// Handle captured pieces first
+	if m.IsCapture() && !m.IsEp() {
+		captured_piece, occupied := b.GetAtSq(m.to)
+		slog.Debug("Handling capture piece", "piece", string(captured_piece.Char()), "color", piece.GetColor().ToStr())
+		if occupied && captured_piece.GetColor() == b.activeColor {
+			slog.Error("Captured piece is not of opponent color.")
+			return false
+		} else if !occupied {
+			slog.Error("Captured position is not occupied.")
+			return false
+		}
+		b.bitBoards[captured_piece] = b.bitBoards[captured_piece].UnSet(m.to)
+	} else if m.IsEp() {
+		capture_sq := Square(m.to - 8)
+		if piece == Pb {
+			capture_sq = Square(m.to + 8)
+		}
+		captured_piece, occupied := b.GetAtSq(capture_sq)
+		slog.Debug("Handling capture piece", "piece", string(captured_piece.Char()), "color", piece.GetColor().ToStr())
+		if !occupied {
+			slog.Error("Invalid state: ep move has no piece to be captured.")
+			return false
+		}
+		b.bitBoards[captured_piece] = b.bitBoards[captured_piece].UnSet(capture_sq)
+	}
+
+	// Now handle the moving piece
+	if m.IsQuiet() || m.IsDoublePawnPush() || (m.IsCapture() && !m.IsPromotion()) {
+		b.bitBoards[piece] = b.bitBoards[piece].UnSet(m.from)
+		b.bitBoards[piece] = b.bitBoards[piece].Set(m.to)
+	} else if m.IsPromotion() {
+		b.bitBoards[piece] = b.bitBoards[piece].UnSet(m.from)
+		promoted_piece := m.GetPromPiece().WithColor(b.activeColor)
+		b.bitBoards[promoted_piece] = b.bitBoards[promoted_piece].Set(m.to)
+	} else if m.IsKingCastle() {
+		if b.activeColor == White {
+			if !b.CanWhiteOO() {
+				slog.Error("White can not castle kingside.")
+				return false
+			}
+			b.bitBoards[Kw] = b.bitBoards[Kw].UnSet(E1)
+			b.bitBoards[Kw] = b.bitBoards[Kw].Set(G1)
+			b.bitBoards[Rw] = b.bitBoards[Rw].UnSet(H1)
+			b.bitBoards[Rw] = b.bitBoards[Rw].Set(F1)
+			b.unsetWhiteOO()
+		} else {
+			if !b.CanBlackOO() {
+				slog.Error("Black can not castle kingside.")
+				return false
+			}
+			b.bitBoards[Kb] = b.bitBoards[Kb].UnSet(E8)
+			b.bitBoards[Kb] = b.bitBoards[Kb].Set(G8)
+			b.bitBoards[Rb] = b.bitBoards[Rb].UnSet(H8)
+			b.bitBoards[Rb] = b.bitBoards[Rb].Set(F8)
+			b.unsetBlackOO()
+		}
+	} else if m.IsQueenCastle() {
+		if b.activeColor == White {
+			if !b.CanWhiteOOO() {
+				slog.Error("White cannot castle queenside")
+				return false
+			}
+			b.bitBoards[Kw] = b.bitBoards[Kw].UnSet(E1)
+			b.bitBoards[Kw] = b.bitBoards[Kw].Set(C1)
+			b.bitBoards[Rw] = b.bitBoards[Rw].UnSet(A1)
+			b.bitBoards[Rw] = b.bitBoards[Rw].Set(D1)
+			b.unsetWhiteOOO()
+		} else {
+			if !b.CanBlackOOO() {
+				slog.Error("Black cannot castle queenside")
+				return false
+			}
+			b.bitBoards[Kb] = b.bitBoards[Kb].UnSet(E8)
+			b.bitBoards[Kb] = b.bitBoards[Kb].Set(C8)
+			b.bitBoards[Rb] = b.bitBoards[Rb].UnSet(A8)
+			b.bitBoards[Rb] = b.bitBoards[Rb].Set(D8)
+			b.unsetBlackOOO()
+		}
+	}
+
+	// EP updates
+	if m.IsDoublePawnPush() {
+		if b.activeColor == White {
+			t := Square(m.to - 8)
+			b.epTarget = &t
+		} else {
+			t := Square(m.to + 8)
+			b.epTarget = &t
+		}
+	} else {
+		b.epTarget = nil
+	}
+
+	// increment move clocks
+	b.halfMoveClock += 1
+	if b.activeColor == Black {
+		b.fullMoveClock += 1
+	}
+
+	// toggle active color
+	b.activeColor = 1 ^ b.activeColor
+	return true
+}
+
+func (b *Board) isMoveLegal(m Move) bool {
+	piece, occupied := b.GetAtSq(m.from)
+	if !occupied {
+		slog.Debug("Moving piece is not occupied.")
+		return false
+	}
+	moving_color := piece.GetColor()
+
+	board_copy := b.MakeCopy()
+	if !board_copy.makeMove(m) {
+		slog.Debug("The move is invalid.")
+		return false
+	}
+
+	// get the position of the king
+	var king_sq Square
+	var king_occupied bool
+	if moving_color == White {
+		king_sq, king_occupied = board_copy.bitBoards[Kw].Peek()
+	} else {
+		king_sq, king_occupied = board_copy.bitBoards[Kb].Peek()
+	}
+
+	if !king_occupied {
+		slog.Debug("King is not occupied.")
+		return false
+	}
+	slog.Debug("Checking if king is attacked.", "king_sq", king_sq.ToStr(), "attacking_color", moving_color^1)
+	return !board_copy.isSqAttacked(king_sq, moving_color^1)
 }
 
 func (b *Board) getColorOccupancy(c Color) BitBoard {
@@ -128,7 +360,7 @@ func (b *Board) whitePawnMoves(pos Square) BitBoard {
 	var quietMoves BitBoard
 	friendly := b.getColorOccupancy(White)
 	enemy := b.getColorOccupancy(Black)
-	if (1<<pos)&EightRank == 0 {
+	if (1<<pos)&EighthRank == 0 {
 		// not in eighth rank
 		quietMoves |= BitBoard(1<<(pos+8)) & ^friendly & ^enemy
 	}
@@ -139,7 +371,7 @@ func (b *Board) whitePawnMoves(pos Square) BitBoard {
 
 	attacks := PawnAtkTable[White][pos] & enemy
 
-	if b.epTarget != nil && attacks&(1<<*b.epTarget) > 0 {
+	if b.epTarget != nil && PawnAtkTable[White][pos]&(1<<*b.epTarget) > 0 {
 		attacks |= (1 << *b.epTarget)
 	}
 
@@ -148,8 +380,8 @@ func (b *Board) whitePawnMoves(pos Square) BitBoard {
 
 func (b *Board) blackPawnMoves(pos Square) BitBoard {
 	var quietMoves BitBoard
-	friendly := b.getColorOccupancy(White)
-	enemy := b.getColorOccupancy(Black)
+	friendly := b.getColorOccupancy(Black)
+	enemy := b.getColorOccupancy(White)
 	if (1<<pos)&FirstRank == 0 {
 		// not in first rank
 		quietMoves |= BitBoard(1<<(pos-8)) & ^friendly & ^enemy
@@ -161,7 +393,7 @@ func (b *Board) blackPawnMoves(pos Square) BitBoard {
 
 	attacks := PawnAtkTable[Black][pos] & enemy
 
-	if b.epTarget != nil && attacks&(1<<*b.epTarget) > 0 {
+	if b.epTarget != nil && PawnAtkTable[Black][pos]&(1<<*b.epTarget) > 0 {
 		attacks |= (1 << *b.epTarget)
 	}
 
@@ -255,42 +487,46 @@ func (b *Board) blackKingMoves(pos Square) BitBoard {
 
 func (b *Board) isSqAttacked(sq Square, attackColor Color) bool {
 	if attackColor == White {
-		if (PawnAtkTable[Black][sq] & b.bitBoards[Pb]) > 0 {
+		if (PawnAtkTable[Black][sq] & b.bitBoards[Pw]) > 0 {
+			slog.Debug("Square attacked by white Pawns", "square", sq.ToStr())
 			return true
-		} else if (KnightAtkTable[sq] & b.bitBoards[Nb]) > 0 {
+		} else if (KnightAtkTable[sq] & b.bitBoards[Nw]) > 0 {
+			slog.Debug("Square attacked by white Knights", "square", sq.ToStr())
 			return true
-		} else if (GetBishopMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Bb] | b.bitBoards[Qb])) > 0 {
+		} else if (GetBishopMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Bw] | b.bitBoards[Qw])) > 0 {
+			slog.Debug("Square attacked by white Bishops", "square", sq.ToStr())
 			return true
-		} else if (GetRookMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Rb] | b.bitBoards[Qb])) > 0 {
+		} else if (GetRookMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Rw] | b.bitBoards[Qw])) > 0 {
+			slog.Debug("Square attacked by white Rooks", "square", sq.ToStr())
 			return true
 		} else {
 			return false
 		}
 	} else {
-		if (PawnAtkTable[White][sq] & b.bitBoards[Pw]) > 0 {
+		if (PawnAtkTable[White][sq] & b.bitBoards[Pb]) > 0 {
+			slog.Debug("Square attacked by black Pawns", "square", sq.ToStr())
 			return true
-		} else if (KnightAtkTable[sq] & b.bitBoards[Nw]) > 0 {
+		} else if (KnightAtkTable[sq] & b.bitBoards[Nb]) > 0 {
+			slog.Debug("Square attacked by black Knights", "square", sq.ToStr())
 			return true
-		} else if (GetBishopMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Bw] | b.bitBoards[Qw])) > 0 {
+		} else if (GetBishopMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Bb] | b.bitBoards[Qb])) > 0 {
+			slog.Debug("Square attacked by black Bishops", "square", sq.ToStr())
 			return true
-		} else if (GetRookMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Rw] | b.bitBoards[Qw])) > 0 {
+		} else if (GetRookMoves(sq, b.blackOccupancy()&b.whiteOccupancy()) & (b.bitBoards[Rb] | b.bitBoards[Qb])) > 0 {
+			slog.Debug("Square attacked by black Rooks", "square", sq.ToStr())
 			return true
 		} else {
 			return false
 		}
+
 	}
 }
 
-func (b *Board) getPieceMoves(sq Square) (BitBoard, bool) {
+// getPieceMovesBB returns a BitBoard of all possible *pseudolegal* moves for a piece at the given square
+func (b *Board) getPieceMovesBB(sq Square) (BitBoard, bool) {
 	piece, ok := b.GetAtSq(sq)
 	if !ok {
 		return 0, false
-	}
-
-	friendlyColor := piece.GetColor()
-	enemyColor := White
-	if enemyColor == friendlyColor {
-		enemyColor = Black
 	}
 
 	switch piece {
@@ -313,4 +549,31 @@ func (b *Board) getPieceMoves(sq Square) (BitBoard, bool) {
 	default:
 		panic("Invalid piece.")
 	}
+}
+
+// getLegalMoves returns a BitBoard comprising of *legal* moves for a piece at the given square.
+func (b *Board) getLegalMoves(sq Square) (BitBoard, bool) {
+	moves_bb, ok := b.getPieceMovesBB(sq)
+	if !ok {
+		return 0, false
+	}
+
+	var legal_moves BitBoard = 0
+	var to Square
+	for true {
+		moves_bb, to, ok = moves_bb.PopSq()
+		if !ok {
+			break
+		}
+		move, ok := b.inferMove(sq, to)
+		if !ok {
+			continue
+		}
+		slog.Debug("Checking Move", "move", move.ToStr())
+		if b.isMoveLegal(move) {
+			slog.Debug("Move legal", "move", move.ToStr())
+			legal_moves = legal_moves.Set(to)
+		}
+	}
+	return legal_moves, true
 }

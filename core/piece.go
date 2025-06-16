@@ -49,6 +49,14 @@ var BlackPieces = [...]Piece{Pb, Nb, Bb, Rb, Qb, Kb}
 var WhitePieces = [...]Piece{Pw, Nw, Bw, Rw, Qw, Kw}
 var BoardPieces = [...]Piece{Pb, Nb, Bb, Rb, Qb, Kb, Pw, Nw, Bw, Rw, Qw, Kw}
 
+func (p promotedPiece) WithColor(c Color) Piece {
+	if c == White {
+		return Piece(p)
+	} else {
+		return Piece(p + 6)
+	}
+}
+
 func (p Piece) GetColor() Color {
 	if p < 6 {
 		return White

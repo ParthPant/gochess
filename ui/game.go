@@ -6,6 +6,7 @@ import (
 	"image/color"
 	_ "image/png"
 	"log"
+	"log/slog"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -59,11 +60,21 @@ func (g *ChessGui) Update() error {
 			g.pickedPiece = &p
 			sq := g.squareAt(x, y)
 			g.pickedSquare = &sq
-			pickedPieceMoves, _ := g.chess.GetPieceMoves(sq)
+			pickedPieceMoves, _ := g.chess.GetLegalPieceMovesBB(sq)
 			g.pickedPieceMoves = &pickedPieceMoves
 		}
-	}
-	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+	} else if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+		if g.pickedPiece != nil {
+			x, y := ebiten.CursorPosition()
+			to := g.squareAt(x, y)
+			if (*g.pickedPiece == core.Pw) && (core.SeventhRank.IsSet(to)) {
+				slog.Debug("White Promotion.")
+			} else if (*g.pickedPiece == core.Pb) && (core.SecondRank.IsSet(to)) {
+				slog.Debug("Black Promotion.")
+			}
+			g.chess.MakeMove(*g.pickedSquare, to, core.Queen)
+		}
+
 		g.pickedPiece = nil
 		g.pickedSquare = nil
 		g.pickedPieceMoves = nil
