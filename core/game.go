@@ -48,12 +48,12 @@ func (g *ChessGame) MakeMove(from Square, to Square, promPiece promotedPiece) (M
 func (g *ChessGame) makeMove(m Move) bool {
 	slog.Debug("Making Move:", "move", m.ToStr())
 	// Move is first made on a copy of the board.
-	board_copy := g.board.MakeCopy()
-	valid := board_copy.makeMove(m)
+	board_copy, valid := g.board.makeMove(m)
 	if valid {
 		slog.Debug("Valid Move.")
 		// if the move is valid the board is replaced with it's copy
 		g.board = board_copy
+		g.board.Print()
 	} else {
 		slog.Debug("Invalid Move.")
 	}

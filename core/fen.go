@@ -11,7 +11,7 @@ import (
 
 func BoardFromFen(fen string) (Board, error) {
 	var board Board
-	board.castlingFlags = 0
+	board.castlingFlags = 0b1111
 	board.activeColor = White
 	board.halfMoveClock = 0
 	board.fullMoveClock = 0
@@ -66,14 +66,16 @@ func BoardFromFen(fen string) (Board, error) {
 	}
 
 	if len(fenParts) > 3 {
-		epTarget := fenParts[3]
-		if epTarget != "-" {
-			sq, err := StrToSq(epTarget)
+		ept := fenParts[3]
+		if ept != "-" {
+			sq, err := StrToSq(ept)
 			if err != nil {
 				slog.Error(fmt.Sprintf("%s", err))
-				return board, errors.New(fmt.Sprintf("Invalid en-passant target: %s", epTarget))
+				return board, errors.New(fmt.Sprintf("Invalid en-passant target: %s", ept))
 			}
-			board.epTarget = &sq
+			board.epTarget = epTarget{exists: true, sq: sq}
+		} else {
+			board.epTarget = epTarget{exists: false, sq: 0}
 		}
 	}
 

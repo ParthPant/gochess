@@ -263,7 +263,7 @@ func rookAttack(sq int, blockers BitBoard) BitBoard {
 	}
 
 	f, r = sq%8-1, sq/8
-	for f >= 1 {
+	for f >= 0 {
 		atk |= 1 << (r*8 + f)
 		if blockers.IsSet(Square(r*8 + f)) {
 			break
@@ -272,7 +272,7 @@ func rookAttack(sq int, blockers BitBoard) BitBoard {
 	}
 
 	f, r = sq%8, sq/8-1
-	for r >= 1 {
+	for r >= 0 {
 		atk |= 1 << (r*8 + f)
 		if blockers.IsSet(Square(r*8 + f)) {
 			break
@@ -311,7 +311,7 @@ func computeMagics(relevantOccupancyFn relevantOccupancyFunc, attackFn attackFun
 
 func tryMakeTable(attackFn attackFunc, m MagicEntry, sq Square) ([]BitBoard, error) {
 	table := make([]BitBoard, 1<<m.indexBits)
-	var blockers BitBoard
+	var blockers BitBoard = 0
 	for {
 		blockers = nextSubset(m.mask, blockers)
 		moves := attackFn(int(sq), blockers)
