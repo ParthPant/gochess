@@ -60,7 +60,7 @@ func (g *ChessGui) Update() error {
 			g.pickedPiece = &p
 			sq := g.squareAt(x, y)
 			g.pickedSquare = &sq
-			pickedPieceMoves, _ := g.chess.GetLegalPieceMovesBB(sq)
+			pickedPieceMoves := g.chess.GetLegalPieceMovesBB(sq)
 			g.pickedPieceMoves = &pickedPieceMoves
 		}
 	} else if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {

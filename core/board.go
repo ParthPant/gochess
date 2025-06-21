@@ -65,17 +65,6 @@ func (b Board) Print() {
 	fmt.Println(buf.String())
 }
 
-// func (b *Board) MakeCopy() Board {
-// 	boardCopy := new(Board)
-// 	*boardCopy = *b
-//
-// 	// if b.hasEPTarget() {
-// 	// 	boardCopy.setEPTarget(b.getEPTarget())
-// 	// }
-//
-// 	return *boardCopy
-// }
-
 func (b Board) GetAtSq(sq Square) (Piece, bool) {
 	for _, piece := range BoardPieces {
 		if b.bitBoards[piece].IsSet(sq) {
@@ -335,7 +324,7 @@ func (b Board) getColorOccupancy(c Color) BitBoard {
 
 func (b Board) whiteOccupancy() BitBoard {
 	var occ BitBoard
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		occ |= b.bitBoards[i]
 	}
 	return occ
@@ -595,13 +584,14 @@ func (b Board) getPieceMovesBB(sq Square) (BitBoard, bool) {
 }
 
 // getLegalMoves returns a BitBoard comprising of *legal* moves for a piece at the given square.
-func (b Board) getLegalMoves(sq Square) (BitBoard, bool) {
+// TODO: Should this function return a "ok" bool? Such functions should probably use a ctx
+func (b Board) getLegalMoves(sq Square) (MoveList, bool) {
 	moves_bb, ok := b.getPieceMovesBB(sq)
+	move_list := []Move{}
 	if !ok {
-		return 0, false
+		return []Move{}, false
 	}
 
-	var legal_moves BitBoard = 0
 	var to Square
 	for true {
 		moves_bb, to, ok = moves_bb.PopSq()
@@ -615,8 +605,31 @@ func (b Board) getLegalMoves(sq Square) (BitBoard, bool) {
 		slog.Debug("Checking Move", "move", move.ToStr())
 		if b.isMoveLegal(move) {
 			slog.Debug("Move legal", "move", move.ToStr())
-			legal_moves = legal_moves.Set(to)
+			move_list = append(move_list, move)
 		}
 	}
-	return legal_moves, true
+	return move_list, true
+}
+
+// getAllLegalMoves returns a BitBoard of all the leagal mvoes for a side.
+func (b Board) getAllLegalMoves(side Color) MoveList {
+	move_list := MoveList{}
+	for piece := range 12 {
+		if (side == White && piece < 6) || (side == Black && piece >= 6) {
+			piece_occupancy := b.bitBoards[piece]
+			sq := Square(0)
+			ok := false
+			for true {
+				piece_occupancy, sq, ok = piece_occupancy.PopSq()
+				if !ok {
+					break
+				}
+				piece_move_list, ok := b.getLegalMoves(sq)
+				if ok {
+					move_list = append(move_list, piece_move_list...)
+				}
+			}
+		}
+	}
+	return move_list
 }

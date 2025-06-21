@@ -16,6 +16,16 @@ type Move struct {
 	to    Square
 }
 
+type MoveList []Move
+
+func (list *MoveList) ToBB() BitBoard {
+	moves_bb := BitBoard(0)
+	for _, move := range *list {
+		moves_bb = moves_bb.Set(move.to)
+	}
+	return moves_bb
+}
+
 func NewQuietMove(from Square, to Square) Move {
 	return Move{
 		flags: 0,
