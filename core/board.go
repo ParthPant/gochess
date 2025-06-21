@@ -18,6 +18,7 @@ type Board struct {
 	activeColor   Color
 	epTarget      epTarget
 	castlingFlags uint8
+	hash          uint64
 }
 
 func (ept *epTarget) set(sq Square) {
@@ -36,7 +37,7 @@ func (ept *epTarget) get() (Square, bool) {
 	return 0, false
 }
 
-func (b Board) Print() {
+func (b *Board) Print() {
 	var buf bytes.Buffer
 
 	for y := 7; y >= 0; y-- {
@@ -65,7 +66,7 @@ func (b Board) Print() {
 	fmt.Println(buf.String())
 }
 
-func (b Board) GetAtSq(sq Square) (Piece, bool) {
+func (b *Board) GetAtSq(sq Square) (Piece, bool) {
 	for _, piece := range BoardPieces {
 		if b.bitBoards[piece].IsSet(sq) {
 			return piece, true
@@ -80,7 +81,7 @@ func (b Board) GetAtSq(sq Square) (Piece, bool) {
 // IMPORTANT: For promotions, the promoted piece will always be set to Knight by default.
 // Use SetPromPiece() to set the correct promoted piece.
 // TODO: inferMove should do all sanity checks on a move
-func (b Board) inferMove(from Square, to Square) (Move, bool) {
+func (b *Board) inferMove(from Square, to Square) (Move, bool) {
 	piece, occupied := b.GetAtSq(from)
 	if !occupied {
 		return Move{}, false
@@ -149,23 +150,23 @@ func (b Board) inferMove(from Square, to Square) (Move, bool) {
 // State is guaranteed to be valid if the return value is True
 // TODO: makeMove should not do any sanity checks on a move. Sanity checks should be done by inferMove
 func (b Board) makeMove(m Move) (Board, bool) {
-	// get the piece which the player has moved
-	piece, occupied := b.GetAtSq(m.from)
+	// get the moving_piece which the player has moved
+	moving_piece, occupied := b.GetAtSq(m.from)
 	if !occupied {
 		slog.Error("No piece to be moved.")
 		return b, false
 	}
 
-	if piece.GetColor() != b.activeColor {
-		slog.Error("Piece is not of the active color ", "color", b.activeColor.ToStr())
+	if moving_piece.GetColor() != b.activeColor {
+		slog.Error("Piece is not of the active color", "color", b.activeColor.ToStr())
 		return b, false
 	}
-	slog.Debug("Moving Piece", "piece", string(piece.Char()))
+	slog.Debug("Moving Piece", "piece", string(moving_piece.Char()))
 
 	// Handle captured pieces first
 	if m.IsCapture() && !m.IsEp() {
 		captured_piece, occupied := b.GetAtSq(m.to)
-		slog.Debug("Handling capture piece", "piece", string(captured_piece.Char()), "color", piece.GetColor().ToStr())
+		slog.Debug("Handling capture piece", "piece", string(captured_piece.Char()), "color", moving_piece.GetColor().ToStr())
 		if occupied && captured_piece.GetColor() == b.activeColor {
 			slog.Error("Captured piece is not of opponent color.")
 			return b, false
@@ -174,28 +175,34 @@ func (b Board) makeMove(m Move) (Board, bool) {
 			return b, false
 		}
 		b.bitBoards[captured_piece] = b.bitBoards[captured_piece].UnSet(m.to)
+		b.hash ^= ZobPieceKeys[captured_piece][m.to]
 	} else if m.IsEp() {
-		capture_sq := Square(m.to - 8)
-		if piece == Pb {
-			capture_sq = Square(m.to + 8)
+		captured_square := Square(m.to - 8)
+		if moving_piece == Pb {
+			captured_square = Square(m.to + 8)
 		}
-		captured_piece, occupied := b.GetAtSq(capture_sq)
-		slog.Debug("Handling capture piece", "piece", string(captured_piece.Char()), "color", piece.GetColor().ToStr())
+		captured_piece, occupied := b.GetAtSq(captured_square)
+		slog.Debug("Handling capture piece", "piece", string(captured_piece.Char()), "color", moving_piece.GetColor().ToStr())
 		if !occupied {
 			slog.Error("Invalid state: ep move has no piece to be captured.")
 			return b, false
 		}
-		b.bitBoards[captured_piece] = b.bitBoards[captured_piece].UnSet(capture_sq)
+		b.bitBoards[captured_piece] = b.bitBoards[captured_piece].UnSet(captured_square)
+		b.hash ^= ZobPieceKeys[captured_piece][captured_square]
 	}
 
 	// Now handle the moving piece
 	if m.IsQuiet() || m.IsDoublePawnPush() || (m.IsCapture() && !m.IsPromotion()) {
-		b.bitBoards[piece] = b.bitBoards[piece].UnSet(m.from)
-		b.bitBoards[piece] = b.bitBoards[piece].Set(m.to)
+		b.bitBoards[moving_piece] = b.bitBoards[moving_piece].UnSet(m.from)
+		b.hash ^= ZobPieceKeys[moving_piece][m.from]
+		b.bitBoards[moving_piece] = b.bitBoards[moving_piece].Set(m.to)
+		b.hash ^= ZobPieceKeys[moving_piece][m.to]
 	} else if m.IsPromotion() {
-		b.bitBoards[piece] = b.bitBoards[piece].UnSet(m.from)
+		b.bitBoards[moving_piece] = b.bitBoards[moving_piece].UnSet(m.from)
+		b.hash ^= ZobPieceKeys[moving_piece][m.from]
 		promoted_piece := m.GetPromPiece().WithColor(b.activeColor)
 		b.bitBoards[promoted_piece] = b.bitBoards[promoted_piece].Set(m.to)
+		b.hash ^= ZobPieceKeys[promoted_piece][m.to]
 	} else if m.IsKingCastle() {
 		if b.activeColor == White {
 			if !b.CanWhiteOO() {
@@ -203,18 +210,26 @@ func (b Board) makeMove(m Move) (Board, bool) {
 				return b, false
 			}
 			b.bitBoards[Kw] = b.bitBoards[Kw].UnSet(E1)
+			b.hash ^= ZobPieceKeys[Kw][E1]
 			b.bitBoards[Kw] = b.bitBoards[Kw].Set(G1)
+			b.hash ^= ZobPieceKeys[Kw][G1]
 			b.bitBoards[Rw] = b.bitBoards[Rw].UnSet(H1)
+			b.hash ^= ZobPieceKeys[Rw][H1]
 			b.bitBoards[Rw] = b.bitBoards[Rw].Set(F1)
+			b.hash ^= ZobPieceKeys[Rw][F1]
 		} else {
 			if !b.CanBlackOO() {
 				slog.Error("Black can not castle kingside.")
 				return b, false
 			}
 			b.bitBoards[Kb] = b.bitBoards[Kb].UnSet(E8)
+			b.hash ^= ZobPieceKeys[Kb][E8]
 			b.bitBoards[Kb] = b.bitBoards[Kb].Set(G8)
+			b.hash ^= ZobPieceKeys[Kb][G8]
 			b.bitBoards[Rb] = b.bitBoards[Rb].UnSet(H8)
+			b.hash ^= ZobPieceKeys[Rb][H8]
 			b.bitBoards[Rb] = b.bitBoards[Rb].Set(F8)
+			b.hash ^= ZobPieceKeys[Rb][F8]
 		}
 	} else if m.IsQueenCastle() {
 		if b.activeColor == White {
@@ -223,53 +238,70 @@ func (b Board) makeMove(m Move) (Board, bool) {
 				return b, false
 			}
 			b.bitBoards[Kw] = b.bitBoards[Kw].UnSet(E1)
+			b.hash ^= ZobPieceKeys[Kw][E1]
 			b.bitBoards[Kw] = b.bitBoards[Kw].Set(C1)
+			b.hash ^= ZobPieceKeys[Kw][C1]
 			b.bitBoards[Rw] = b.bitBoards[Rw].UnSet(A1)
+			b.hash ^= ZobPieceKeys[Rw][A1]
 			b.bitBoards[Rw] = b.bitBoards[Rw].Set(D1)
+			b.hash ^= ZobPieceKeys[Rw][D1]
 		} else {
 			if !b.CanBlackOOO() {
 				slog.Error("Black cannot castle queenside")
 				return b, false
 			}
 			b.bitBoards[Kb] = b.bitBoards[Kb].UnSet(E8)
+			b.hash ^= ZobPieceKeys[Kb][E8]
 			b.bitBoards[Kb] = b.bitBoards[Kb].Set(C8)
+			b.hash ^= ZobPieceKeys[Kb][C8]
 			b.bitBoards[Rb] = b.bitBoards[Rb].UnSet(A8)
+			b.hash ^= ZobPieceKeys[Rb][A8]
 			b.bitBoards[Rb] = b.bitBoards[Rb].Set(D8)
+			b.hash ^= ZobPieceKeys[Rb][D8]
 		}
 	}
 
 	// update if castling is no longer possible
-	if piece == Kw {
+	b.hash ^= ZobCastleKeys[b.castlingFlags]
+	if moving_piece == Kw {
 		b.unsetWhiteOO()
 		b.unsetWhiteOOO()
-	} else if piece == Kb {
+	} else if moving_piece == Kb {
 		b.unsetBlackOO()
 		b.unsetBlackOOO()
-	} else if piece == Rw {
+	} else if moving_piece == Rw {
 		if m.from == A1 {
 			b.unsetWhiteOOO()
 		} else if m.from == H1 {
 			b.unsetWhiteOO()
 		}
-	} else if piece == Rb {
+	} else if moving_piece == Rb {
 		if m.from == A8 {
 			b.unsetBlackOOO()
 		} else if m.from == H8 {
 			b.unsetBlackOO()
 		}
 	}
+	b.hash ^= ZobCastleKeys[b.castlingFlags]
 
 	// EP updates
+	if t, exists := b.epTarget.get(); exists {
+		b.hash ^= ZobEpKeys[t]
+	}
 	if m.IsDoublePawnPush() {
+		var t Square
 		if b.activeColor == White {
-			t := Square(m.to - 8)
+			t = Square(m.to - 8)
 			b.epTarget.set(t)
 		} else {
-			t := Square(m.to + 8)
+			t = Square(m.to + 8)
 			b.epTarget.set(t)
 		}
 	} else {
 		b.epTarget.clear()
+	}
+	if t, exists := b.epTarget.get(); exists {
+		b.hash ^= ZobEpKeys[t]
 	}
 
 	// increment move clocks
@@ -280,10 +312,12 @@ func (b Board) makeMove(m Move) (Board, bool) {
 
 	// toggle active color
 	b.activeColor = 1 ^ b.activeColor
+	b.hash ^= ZobBlackToMoveKey
+
 	return b, true
 }
 
-func (b Board) isMoveLegal(m Move) bool {
+func (b *Board) isMoveLegal(m Move) bool {
 	piece, occupied := b.GetAtSq(m.from)
 	if !occupied {
 		slog.Debug("Moving piece is not occupied.")
@@ -314,7 +348,7 @@ func (b Board) isMoveLegal(m Move) bool {
 	return !board_copy.isSqAttacked(king_sq, moving_color^1)
 }
 
-func (b Board) getColorOccupancy(c Color) BitBoard {
+func (b *Board) getColorOccupancy(c Color) BitBoard {
 	if c == White {
 		return b.whiteOccupancy()
 	} else {
@@ -322,7 +356,7 @@ func (b Board) getColorOccupancy(c Color) BitBoard {
 	}
 }
 
-func (b Board) whiteOccupancy() BitBoard {
+func (b *Board) whiteOccupancy() BitBoard {
 	var occ BitBoard
 	for i := range 6 {
 		occ |= b.bitBoards[i]
@@ -330,7 +364,7 @@ func (b Board) whiteOccupancy() BitBoard {
 	return occ
 }
 
-func (b Board) blackOccupancy() BitBoard {
+func (b *Board) blackOccupancy() BitBoard {
 	var occ BitBoard
 	for i := 6; i < 12; i++ {
 		occ |= b.bitBoards[i]
@@ -346,7 +380,7 @@ func (b *Board) unsetWhiteOO() {
 	b.castlingFlags &= ^uint8(1)
 }
 
-func (b Board) CanWhiteOO() bool {
+func (b *Board) CanWhiteOO() bool {
 	return b.castlingFlags&1 > 0
 }
 
@@ -358,7 +392,7 @@ func (b *Board) unsetWhiteOOO() {
 	b.castlingFlags &= ^uint8(1 << 1)
 }
 
-func (b Board) CanWhiteOOO() bool {
+func (b *Board) CanWhiteOOO() bool {
 	return b.castlingFlags&(1<<1) > 0
 }
 
@@ -370,7 +404,7 @@ func (b *Board) unsetBlackOO() {
 	b.castlingFlags &= ^uint8(1 << 2)
 }
 
-func (b Board) CanBlackOO() bool {
+func (b *Board) CanBlackOO() bool {
 	return b.castlingFlags&(1<<2) > 0
 }
 
@@ -382,11 +416,11 @@ func (b *Board) unsetBlackOOO() {
 	b.castlingFlags &= ^uint8(1 << 3)
 }
 
-func (b Board) CanBlackOOO() bool {
+func (b *Board) CanBlackOOO() bool {
 	return b.castlingFlags&(1<<3) > 0
 }
 
-func (b Board) whitePawnMoves(pos Square) BitBoard {
+func (b *Board) whitePawnMoves(pos Square) BitBoard {
 	var quietMoves BitBoard
 	friendly := b.getColorOccupancy(White)
 	enemy := b.getColorOccupancy(Black)
@@ -409,7 +443,7 @@ func (b Board) whitePawnMoves(pos Square) BitBoard {
 	return quietMoves | attacks
 }
 
-func (b Board) blackPawnMoves(pos Square) BitBoard {
+func (b *Board) blackPawnMoves(pos Square) BitBoard {
 	var quietMoves BitBoard
 	friendly := b.getColorOccupancy(Black)
 	enemy := b.getColorOccupancy(White)
@@ -432,14 +466,14 @@ func (b Board) blackPawnMoves(pos Square) BitBoard {
 	return quietMoves | attacks
 }
 
-func (b Board) knightMoves(pos Square) BitBoard {
+func (b *Board) knightMoves(pos Square) BitBoard {
 	piece, _ := b.GetAtSq(pos)
 	friendlyColor := piece.GetColor()
 	friendly := b.getColorOccupancy(friendlyColor)
 	return KnightAtkTable[pos] & ^friendly
 }
 
-func (b Board) rookMoves(pos Square) BitBoard {
+func (b *Board) rookMoves(pos Square) BitBoard {
 	piece, _ := b.GetAtSq(pos)
 	friendlyColor := piece.GetColor()
 	enemyColor := White
@@ -451,7 +485,7 @@ func (b Board) rookMoves(pos Square) BitBoard {
 	return GetRookMoves(pos, friendly|enemy) & ^friendly
 }
 
-func (b Board) bishopMoves(pos Square) BitBoard {
+func (b *Board) bishopMoves(pos Square) BitBoard {
 	piece, _ := b.GetAtSq(pos)
 	friendlyColor := piece.GetColor()
 	enemyColor := White
@@ -463,11 +497,11 @@ func (b Board) bishopMoves(pos Square) BitBoard {
 	return GetBishopMoves(pos, friendly|enemy) & ^friendly
 }
 
-func (b Board) queenMoves(pos Square) BitBoard {
+func (b *Board) queenMoves(pos Square) BitBoard {
 	return b.bishopMoves(pos) | b.rookMoves(pos)
 }
 
-func (b Board) whiteKingMoves(pos Square) BitBoard {
+func (b *Board) whiteKingMoves(pos Square) BitBoard {
 	piece, _ := b.GetAtSq(pos)
 	friendlyColor := piece.GetColor()
 	enemyColor := White
@@ -492,7 +526,7 @@ func (b Board) whiteKingMoves(pos Square) BitBoard {
 	return moves
 }
 
-func (b Board) blackKingMoves(pos Square) BitBoard {
+func (b *Board) blackKingMoves(pos Square) BitBoard {
 	piece, _ := b.GetAtSq(pos)
 	friendlyColor := piece.GetColor()
 	enemyColor := White
@@ -517,7 +551,7 @@ func (b Board) blackKingMoves(pos Square) BitBoard {
 	return moves
 }
 
-func (b Board) isSqAttacked(sq Square, attackColor Color) bool {
+func (b *Board) isSqAttacked(sq Square, attackColor Color) bool {
 	if attackColor == White {
 		if (PawnAtkTable[Black][sq] & b.bitBoards[Pw]) > 0 {
 			slog.Debug("Square attacked by white Pawns", "square", sq.ToStr())
@@ -555,7 +589,7 @@ func (b Board) isSqAttacked(sq Square, attackColor Color) bool {
 }
 
 // getPieceMovesBB returns a BitBoard of all possible *pseudolegal* moves for a piece at the given square
-func (b Board) getPieceMovesBB(sq Square) (BitBoard, bool) {
+func (b *Board) getPieceMovesBB(sq Square) (BitBoard, bool) {
 	piece, ok := b.GetAtSq(sq)
 	if !ok {
 		return 0, false
@@ -585,7 +619,7 @@ func (b Board) getPieceMovesBB(sq Square) (BitBoard, bool) {
 
 // getLegalMoves returns a BitBoard comprising of *legal* moves for a piece at the given square.
 // TODO: Should this function return a "ok" bool? Such functions should probably use a ctx
-func (b Board) getLegalMoves(sq Square) (MoveList, bool) {
+func (b *Board) getLegalMoves(sq Square) (MoveList, bool) {
 	moves_bb, ok := b.getPieceMovesBB(sq)
 	move_list := []Move{}
 	if !ok {
@@ -612,7 +646,7 @@ func (b Board) getLegalMoves(sq Square) (MoveList, bool) {
 }
 
 // getAllLegalMoves returns a BitBoard of all the leagal mvoes for a side.
-func (b Board) getAllLegalMoves(side Color) MoveList {
+func (b *Board) getAllLegalMoves(side Color) MoveList {
 	move_list := MoveList{}
 	for piece := range 12 {
 		if (side == White && piece < 6) || (side == Black && piece >= 6) {
@@ -632,4 +666,21 @@ func (b Board) getAllLegalMoves(side Color) MoveList {
 		}
 	}
 	return move_list
+}
+
+func (b *Board) calculateHash() uint64 {
+	key := uint64(0)
+	for square := range 64 {
+		if piece, occupied := b.GetAtSq(Square(square)); occupied {
+			key ^= ZobPieceKeys[piece][square]
+		}
+	}
+	if ep_sq, exists := b.epTarget.get(); exists {
+		key ^= ZobEpKeys[ep_sq]
+	}
+	key ^= ZobCastleKeys[b.castlingFlags]
+	if b.activeColor == Black {
+		key ^= ZobBlackToMoveKey
+	}
+	return key
 }

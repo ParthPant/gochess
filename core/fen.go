@@ -15,6 +15,7 @@ func BoardFromFen(fen string) (Board, error) {
 	board.activeColor = White
 	board.halfMoveClock = 0
 	board.fullMoveClock = 0
+	board.epTarget = epTarget{false, 0}
 
 	fenParts := s.Split(fen, " ")
 	piecesPart := fenParts[0]
@@ -99,5 +100,6 @@ func BoardFromFen(fen string) (Board, error) {
 		}
 	}
 
+	board.hash = board.calculateHash()
 	return board, nil
 }

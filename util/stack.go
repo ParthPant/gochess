@@ -1,4 +1,4 @@
-package core
+package util
 
 type Stack[T any] struct {
 	seq []T
