@@ -1,4 +1,4 @@
-package core
+package util
 
 type PRNG struct {
 	state uint64

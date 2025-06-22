@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"math/bits"
 	"sync"
+
+	"github.com/ParthPant/gochess/util"
 )
 
 var magicSeeds = [8]uint64{728, 10316, 55013, 32803, 12281, 15100, 16645, 255}
@@ -291,7 +293,7 @@ func (e *MagicEntry) magic_index(blockers BitBoard) uint64 {
 }
 
 func computeMagics(relevantOccupancyFn relevantOccupancyFunc, attackFn attackFunc, magicTable *[64]MagicEntry, movesTable *[64][]BitBoard) {
-	var prng PRNG
+	var prng util.PRNG
 	for i := 0; i < 64; i++ {
 		prng.Seed(magicSeeds[i%8])
 		set := relevantOccupancyFn(i)

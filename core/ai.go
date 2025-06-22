@@ -12,7 +12,7 @@ type NegaMaxAI struct {
 func NewNegaMaxAI() NegaMaxAI {
 	return NegaMaxAI{
 		evaluateBoard,
-		3,
+		5,
 	}
 }
 
@@ -22,7 +22,7 @@ func (nmax *NegaMaxAI) GetBestMove(b *Board) (Move, bool) {
 	found := false
 	for _, move := range b.getAllLegalMoves(b.activeColor) {
 		if board_copy, ok := b.makeMove(move); ok {
-			move_score := -nmax.negamax(board_copy, nmax.depth-1)
+			move_score := -nmax.negamax(board_copy, nmax.depth-1, MinScore, MaxScore)
 			if move_score > value {
 				value = move_score
 				bestMove = move
@@ -33,7 +33,7 @@ func (nmax *NegaMaxAI) GetBestMove(b *Board) (Move, bool) {
 	return bestMove, found
 }
 
-func (nmax *NegaMaxAI) negamax(b Board, depth uint8) int32 {
+func (nmax *NegaMaxAI) negamax(b Board, depth uint8, alpha int32, beta int32) int32 {
 	if depth == 0 {
 		return nmax.evalMethod(&b)
 	}
@@ -43,7 +43,11 @@ func (nmax *NegaMaxAI) negamax(b Board, depth uint8) int32 {
 	value := MinScore
 	for _, move := range b.getAllLegalMoves(b.activeColor) {
 		if board_copy, ok := b.makeMove(move); ok {
-			value = max(value, -nmax.negamax(board_copy, depth-1))
+			value = max(value, -nmax.negamax(board_copy, depth-1, -beta, -alpha))
+			alpha = max(alpha, value)
+			if alpha >= beta {
+				break
+			}
 		}
 	}
 	return value

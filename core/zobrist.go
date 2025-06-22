@@ -1,6 +1,10 @@
 package core
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/ParthPant/gochess/util"
+)
 
 var ZobPieceKeys [12][64]uint64
 var ZobEpKeys [64]uint64
@@ -9,7 +13,7 @@ var ZobBlackToMoveKey uint64
 
 func init() {
 	slog.Info("Generating Zobrist keys.")
-	var prng PRNG
+	var prng util.PRNG
 	prng.Seed(2342342)
 	for piece := range 12 {
 		for sq := range 64 {

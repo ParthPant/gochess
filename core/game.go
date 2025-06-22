@@ -107,6 +107,7 @@ func (g *ChessGame) MakeAIMove() bool {
 	if ai_move, found := g.Ai.GetBestMove(&g.Board); found {
 		return g.makeMoveImpl(ai_move)
 	} else {
+		slog.Info("AI could not find a Move to make.")
 		return false
 	}
 }

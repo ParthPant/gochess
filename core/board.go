@@ -168,7 +168,7 @@ func (b Board) makeMove(m Move) (Board, bool) {
 		captured_piece, occupied := b.GetAtSq(m.to)
 		slog.Debug("Handling capture piece", "piece", string(captured_piece.Char()), "color", moving_piece.GetColor().ToStr())
 		if occupied && captured_piece.GetColor() == b.activeColor {
-			slog.Error("Captured piece is not of opponent color.")
+			slog.Error("Captured piece is not of opponent color.", "move", m.ToStr())
 			return b, false
 		} else if !occupied {
 			slog.Error("Captured position is not occupied.")
@@ -428,8 +428,8 @@ func (b *Board) whitePawnMoves(pos Square) BitBoard {
 		// not in eighth rank
 		quietMoves |= BitBoard(1<<(pos+8)) & ^friendly & ^enemy
 	}
-	if (1<<pos)&SecondRank > 0 {
-		// in second rank
+	if (1<<pos)&SecondRank > 0 && ((1<<(pos+8))&(friendly|enemy) == 0) {
+		// in second rank and third rank square is empty
 		quietMoves |= BitBoard(1<<(pos+16)) & ^friendly & ^enemy
 	}
 
@@ -451,8 +451,8 @@ func (b *Board) blackPawnMoves(pos Square) BitBoard {
 		// not in first rank
 		quietMoves |= BitBoard(1<<(pos-8)) & ^friendly & ^enemy
 	}
-	if (1<<pos)&SeventhRank > 0 {
-		// in seventh rank
+	if (1<<pos)&SeventhRank > 0 && (1<<(pos-8))&(friendly|enemy) == 0 {
+		// in seventh rank and sixth rank square is empty
 		quietMoves |= BitBoard(1<<(pos-16)) & ^friendly & ^enemy
 	}
 
@@ -512,7 +512,7 @@ func (b *Board) whiteKingMoves(pos Square) BitBoard {
 	enemy := b.getColorOccupancy(enemyColor)
 
 	moves := KingAtkTable[pos] & ^friendly
-	allOccupancy := friendly & enemy
+	allOccupancy := friendly | enemy
 	if pos == E1 && b.CanWhiteOO() {
 		if (allOccupancy&(1<<F1) == 0) && (allOccupancy&(1<<G1) == 0) && !b.isSqAttacked(G1, Black) {
 			moves = moves.Set(G1)
@@ -537,7 +537,7 @@ func (b *Board) blackKingMoves(pos Square) BitBoard {
 	enemy := b.getColorOccupancy(enemyColor)
 
 	moves := KingAtkTable[pos] & ^friendly
-	allOccupancy := friendly & enemy
+	allOccupancy := friendly | enemy
 	if pos == E8 && b.CanBlackOO() {
 		if (allOccupancy&(1<<F8) == 0) && (allOccupancy&(1<<G8) == 0) && !b.isSqAttacked(G8, White) {
 			moves = moves.Set(G8)
@@ -659,8 +659,7 @@ func (b *Board) getAllLegalMoves(side Color) MoveList {
 				if !ok {
 					break
 				}
-				piece_move_list, ok := b.getLegalMoves(sq)
-				if ok {
+				if piece_move_list, ok := b.getLegalMoves(sq); ok {
 					move_list = append(move_list, piece_move_list...)
 				}
 			}
