@@ -645,7 +645,8 @@ func (b *Board) getLegalMoves(sq Square) (MoveList, bool) {
 	return move_list, true
 }
 
-// getAllLegalMoves returns a BitBoard of all the leagal mvoes for a side.
+// getAllLegalMoves returns a MoveList of all the leagal mvoes for a side.
+// TODO: Handle Promotion pieces
 func (b *Board) getAllLegalMoves(side Color) MoveList {
 	move_list := MoveList{}
 	for piece := range 12 {
@@ -683,4 +684,23 @@ func (b *Board) calculateHash() uint64 {
 		key ^= ZobBlackToMoveKey
 	}
 	return key
+}
+
+func (b *Board) isActiveSideInCheck() bool {
+	var sq Square
+	var occupied bool
+	switch b.activeColor {
+	case White:
+		sq, occupied = b.bitBoards[Kw].Peek()
+	case Black:
+		sq, occupied = b.bitBoards[Kb].Peek()
+	}
+	if !occupied {
+		panic("King is not on the board, this should not happen.")
+	}
+	return b.isSqAttacked(sq, b.activeColor^1)
+}
+
+func (b *Board) GetActiveColor() Color {
+	return b.activeColor
 }

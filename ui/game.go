@@ -53,6 +53,10 @@ func CreateGui(chess core.ChessGame, boardSize int) ChessGui {
 }
 
 func (g *ChessGui) Update() error {
+	if g.chess.Board.GetActiveColor() != g.chess.HumanColor {
+		g.chess.MakeAIMove()
+		return nil
+	}
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		x, y := ebiten.CursorPosition()
 		p, ok := g.pieceAt(x, y)
@@ -108,8 +112,6 @@ func (g *ChessGui) Draw(screen *ebiten.Image) {
 			}
 			square.Fill(color)
 
-			piece, hasPiece := g.chess.Board().GetAtSq(core.SquareFromXY(x, y))
-
 			if g.pickedPieceMoves != nil {
 				if g.pickedPieceMoves.IsSet(core.SquareFromXY(x, y)) {
 					op := ebiten.DrawImageOptions{}
@@ -118,7 +120,7 @@ func (g *ChessGui) Draw(screen *ebiten.Image) {
 				}
 			}
 
-			if hasPiece {
+			if piece, hasPiece := g.chess.Board.GetAtSq(core.SquareFromXY(x, y)); hasPiece {
 				if g.pickedSquare == nil || *g.pickedSquare != core.SquareFromXY(x, y) {
 					drawPiece(uint8(piece), square)
 				}
@@ -156,7 +158,7 @@ func (g *ChessGui) squareAt(x int, y int) core.Square {
 }
 
 func (g *ChessGui) pieceAt(x int, y int) (core.Piece, bool) {
-	return g.chess.Board().GetAtSq(g.squareAt(x, y))
+	return g.chess.Board.GetAtSq(g.squareAt(x, y))
 }
 
 func drawPickedPiece(piece uint8, image *ebiten.Image) {
