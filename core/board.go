@@ -53,7 +53,7 @@ func (b *Board) Print() {
 		}
 		buf.WriteRune('\n')
 	}
-	buf.WriteString(fmt.Sprintf("   A  B  C  D  E  F  G  H"))
+	buf.WriteString("   A  B  C  D  E  F  G  H")
 	ept, eptExists := b.epTarget.get()
 	epTarget := "N/A"
 	if eptExists {
@@ -639,7 +639,19 @@ func (b *Board) getLegalMoves(sq Square) (MoveList, bool) {
 		slog.Debug("Checking Move", "move", move.ToStr())
 		if b.isMoveLegal(move) {
 			slog.Debug("Move legal", "move", move.ToStr())
-			move_list = append(move_list, move)
+			if move.IsPromotion() {
+				// create all promotion moves
+				move.SetPromPiece(Knight)
+				move_list = append(move_list, move)
+				move.SetPromPiece(Rook)
+				move_list = append(move_list, move)
+				move.SetPromPiece(Bishop)
+				move_list = append(move_list, move)
+				move.SetPromPiece(Queen)
+				move_list = append(move_list, move)
+			} else {
+				move_list = append(move_list, move)
+			}
 		}
 	}
 	return move_list, true
